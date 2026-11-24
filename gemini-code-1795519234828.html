@@ -1,0 +1,2513 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>WEB AUDIO V4 // 3D 音樂視覺化戰術工作室</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --hud-primary: #00f0ff;
+      --hud-secondary: #ff2a85;
+      --hud-accent: #7000ff;
+      --hud-bg: rgba(6, 12, 22, 0.78);
+      --hud-panel: rgba(10, 18, 32, 0.85);
+      --hud-border: rgba(0, 240, 255, 0.35);
+      --hud-text: #e2f1ff;
+      --hud-muted: #7a98b8;
+      --font-display: 'Orbitron', 'Noto Sans TC', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-sans: 'Noto Sans TC', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #03060c;
+      color: var(--hud-text);
+      font-family: var(--font-sans);
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 科幻戰術掃描網格背景微裝飾 */
+    .hud-vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background: radial-gradient(circle at center, transparent 58%, rgba(2, 6, 14, 0.75) 100%);
+    }
+
+    /* 四角戰術準星框線 */
+    .hud-corner {
+      position: fixed;
+      width: 28px;
+      height: 28px;
+      z-index: 5;
+      pointer-events: none;
+      border-color: var(--hud-primary);
+      border-style: solid;
+      opacity: 0.75;
+    }
+    .hud-corner.tl { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+    .hud-corner.tr { top: 10px; right: 10px; border-width: 2px 2px 0 0; }
+    .hud-corner.bl { bottom: 10px; left: 10px; border-width: 0 0 2px 2px; }
+    .hud-corner.br { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+
+    /* UI 總容器 */
+    #ui-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      transition: opacity 0.35s ease;
+    }
+
+    #ui-layer.pure-visual .hud-hideable {
+      opacity: 0 !important;
+      pointer-events: none !important;
+      transform: translateY(-10px);
+    }
+
+    /* 純視覺恢復按鈕 */
+    #btn-exit-pure {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 50;
+      pointer-events: auto;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: rgba(6, 14, 26, 0.85);
+      border: 1px solid var(--hud-primary);
+      color: var(--hud-primary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+      backdrop-filter: blur(8px);
+    }
+    #ui-layer.pure-visual #btn-exit-pure {
+      display: flex;
+    }
+
+    /* 頂部戰術狀態列 */
+    .hud-topbar {
+      position: fixed;
+      top: 12px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      pointer-events: none;
+      transition: opacity 0.3s, transform 0.3s;
+    }
+
+    .hud-brand {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      padding: 7px 14px;
+      backdrop-filter: blur(10px);
+      clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+    }
+
+    .hud-brand-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--hud-primary);
+      box-shadow: 0 0 8px var(--hud-primary);
+      animation: pulseDot 1.6s infinite;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.75); }
+    }
+
+    .hud-title {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--hud-primary);
+    }
+
+    .hud-telemetry {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--hud-muted);
+      display: flex;
+      gap: 10px;
+    }
+
+    .hud-telemetry span b {
+      color: var(--hud-text);
+      font-weight: 600;
+    }
+
+    .hud-top-actions {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    /* 通用戰術按鈕 */
+    .hud-btn {
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      color: var(--hud-text);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.18s ease;
+      backdrop-filter: blur(8px);
+      clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    }
+
+    .hud-btn:hover {
+      border-color: var(--hud-primary);
+      background: rgba(0, 240, 255, 0.14);
+      color: #fff;
+    }
+
+    .hud-btn.active {
+      background: rgba(0, 240, 255, 0.24);
+      border-color: var(--hud-primary);
+      color: var(--hud-primary);
+      box-shadow: inset 0 0 10px rgba(0, 240, 255, 0.25);
+    }
+
+    .hud-btn.danger.active {
+      background: rgba(255, 42, 133, 0.25);
+      border-color: var(--hud-secondary);
+      color: #ff7eb3;
+    }
+
+    /* 左側 / 右側可收合戰術面板 */
+    .hud-drawer {
+      position: fixed;
+      top: 58px;
+      bottom: 84px;
+      width: 310px;
+      background: var(--hud-panel);
+      border: 1px solid var(--hud-border);
+      backdrop-filter: blur(12px);
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s;
+      z-index: 15;
+    }
+
+    .hud-drawer.left {
+      left: 16px;
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+    }
+
+    .hud-drawer.right {
+      right: 16px;
+      clip-path: polygon(14px 0, 100% 0, 100% 100%, 0 100%, 0 14px);
+    }
+
+    .hud-drawer.left.collapsed {
+      transform: translateX(calc(-100% - 24px));
+    }
+
+    .hud-drawer.right.collapsed {
+      transform: translateX(calc(100% + 24px));
+    }
+
+    .drawer-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--hud-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-display);
+      font-size: 12px;
+      letter-spacing: 0.8px;
+      color: var(--hud-primary);
+      background: rgba(0, 240, 255, 0.06);
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .drawer-body::-webkit-scrollbar {
+      width: 4px;
+    }
+    .drawer-body::-webkit-scrollbar-thumb {
+      background: var(--hud-border);
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--hud-muted);
+      letter-spacing: 0.6px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* 12 特效網格 */
+    .fx-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .fx-btn {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(122, 152, 184, 0.25);
+      color: var(--hud-text);
+      padding: 7px 8px;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .fx-btn span.tag {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      opacity: 0.65;
+    }
+
+    .fx-btn:hover {
+      border-color: var(--hud-primary);
+      background: rgba(0, 240, 255, 0.08);
+    }
+
+    .fx-btn.active {
+      border-color: var(--hud-primary);
+      background: rgba(0, 240, 255, 0.2);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* 音訊來源按鈕群 */
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    /* 滑桿控制組 */
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--hud-text);
+    }
+
+    .slider-header span.val {
+      font-family: var(--font-mono);
+      color: var(--hud-primary);
+      font-size: 11px;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: rgba(122, 152, 184, 0.28);
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 14px;
+      background: var(--hud-primary);
+      border: 1px solid #fff;
+      cursor: pointer;
+    }
+
+    /* 主題選擇器 */
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+
+    .theme-btn {
+      padding: 6px 4px;
+      font-size: 11px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(122, 152, 184, 0.25);
+      color: var(--hud-text);
+      cursor: pointer;
+    }
+
+    .theme-btn.active {
+      border-color: var(--hud-primary);
+      background: rgba(0, 240, 255, 0.2);
+      color: var(--hud-primary);
+      font-weight: 700;
+    }
+
+    /* YouTube 嵌入區塊 */
+    .yt-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(122, 152, 184, 0.22);
+    }
+
+    .yt-input-row {
+      display: flex;
+      gap: 5px;
+    }
+
+    .yt-input {
+      flex: 1;
+      min-width: 0;
+      background: rgba(6, 14, 26, 0.9);
+      border: 1px solid var(--hud-border);
+      color: #fff;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+    }
+
+    #yt-player-wrap {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      display: none;
+      border: 1px solid var(--hud-border);
+    }
+    #yt-player-wrap.visible {
+      display: block;
+    }
+    #yt-player-wrap iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    .status-banner {
+      font-size: 11px;
+      line-height: 1.45;
+      padding: 6px 8px;
+      background: rgba(0, 240, 255, 0.08);
+      border-left: 2px solid var(--hud-primary);
+      color: #bfefff;
+    }
+
+    .status-banner.warn {
+      background: rgba(255, 170, 0, 0.12);
+      border-left-color: #ffaa00;
+      color: #ffe099;
+    }
+
+    /* 底部儀表台：播放控制 + 32頻段頻譜條 */
+    .hud-bottom-deck {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(780px, calc(100vw - 32px));
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      backdrop-filter: blur(12px);
+      padding: 8px 14px;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
+      transition: opacity 0.3s, transform 0.3s;
+    }
+
+    .deck-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .btn-play-main {
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--hud-primary);
+      background: rgba(0, 240, 255, 0.18);
+      color: var(--hud-primary);
+      font-size: 15px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    }
+
+    .btn-play-main:hover {
+      background: rgba(0, 240, 255, 0.32);
+    }
+
+    .track-meta {
+      min-width: 110px;
+      max-width: 155px;
+    }
+
+    .track-title {
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #fff;
+    }
+
+    .track-sub {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--hud-primary);
+    }
+
+    #spectrum-canvas {
+      flex: 1;
+      height: 38px;
+      background: rgba(2, 6, 14, 0.6);
+      border: 1px solid rgba(0, 240, 255, 0.2);
+    }
+
+    /* 手機與平板響應式設計 (390x844 安全適配) */
+    @media (max-width: 900px) {
+      .hud-telemetry {
+        display: none;
+      }
+      .hud-drawer {
+        width: calc(100vw - 32px);
+        max-width: 360px;
+        top: 54px;
+        bottom: 78px;
+      }
+      .hud-bottom-deck {
+        padding: 7px 10px;
+        gap: 8px;
+      }
+      .track-meta {
+        min-width: 82px;
+        max-width: 105px;
+      }
+      .hud-btn span.btn-label {
+        display: none;
+      }
+      .hud-btn.keep-label span.btn-label {
+        display: inline;
+      }
+    }
+
+    /* 檔案拖放覆蓋提示 */
+    #drop-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(3, 10, 22, 0.88);
+      border: 2px dashed var(--hud-primary);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+      font-family: var(--font-display);
+      color: var(--hud-primary);
+      pointer-events: none;
+    }
+    #drop-overlay.active {
+      display: flex;
+    }
+  </style>
+
+  <!-- ES Module Shims 與 Three.js 0.187.0 Import Map -->
+  <script async src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.min.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div class="hud-vignette"></div>
+
+  <!-- 四角戰術準星 -->
+  <div class="hud-corner tl"></div>
+  <div class="hud-corner tr"></div>
+  <div class="hud-corner bl"></div>
+  <div class="hud-corner br"></div>
+
+  <!-- 拖放音檔遮罩 -->
+  <div id="drop-overlay">
+    <div style="font-size: 20px; font-weight: 700;">[ 釋放音訊檔案以載入戰術分析儀 ]</div>
+    <div style="font-size: 13px; color: #bfefff;">支援 MP3 / WAV / M4A / OGG</div>
+  </div>
+
+  <!-- UI 戰術層 -->
+  <div id="ui-layer">
+    <!-- 純視覺模式恢復鈕 -->
+    <button id="btn-exit-pure" title="恢復介面 (ESC)">✕ 恢復介面 [ESC]</button>
+
+    <!-- 頂部狀態列 -->
+    <header class="hud-topbar hud-hideable">
+      <div class="hud-brand">
+        <div class="hud-brand-dot"></div>
+        <div>
+          <div class="hud-title">WEB AUDIO V4 // HUD</div>
+          <div class="hud-telemetry">
+            <span>TIER: <b id="stat-tier">--</b></span>
+            <span>FPS: <b id="stat-fps">--</b></span>
+            <span>BASS: <b id="stat-bass">0%</b></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-top-actions">
+        <button class="hud-btn keep-label active" id="toggle-left-drawer">🎛️ <span class="btn-label">特效與音訊</span></button>
+        <button class="hud-btn keep-label" id="toggle-right-drawer">⚙️ <span class="btn-label">參數與色彩</span></button>
+        <button class="hud-btn" id="btn-snapshot" title="下載 PNG 截圖">📸 <span class="btn-label">截圖</span></button>
+        <button class="hud-btn" id="btn-pure-visual" title="純視覺模式">👁️ <span class="btn-label">純視覺</span></button>
+        <button class="hud-btn" id="btn-fullscreen" title="全螢幕切換">⛶ <span class="btn-label">全螢幕</span></button>
+      </div>
+    </header>
+
+    <!-- 左側抽屜：12 種 3D 特效 + 5 種音訊來源 -->
+    <aside class="hud-drawer left hud-hideable" id="drawer-left">
+      <div class="drawer-header">
+        <span>// 視覺模組與訊號源</span>
+        <button class="hud-btn" id="close-left-drawer" style="padding:2px 7px;">✕</button>
+      </div>
+      <div class="drawer-body">
+        <!-- 12 種特效 -->
+        <div>
+          <div class="section-label">
+            <span>V4 新世代特效 (6)</span>
+            <span style="font-family:var(--font-mono);color:var(--hud-primary);">GPU SAFE</span>
+          </div>
+          <div class="fx-grid" id="fx-grid-v4"></div>
+        </div>
+
+        <div>
+          <div class="section-label">
+            <span>經典粒子矩陣特效 (6)</span>
+          </div>
+          <div class="fx-grid" id="fx-grid-classic"></div>
+        </div>
+
+        <!-- 音訊來源 -->
+        <div>
+          <div class="section-label">
+            <span>音訊輸入訊號源 (5)</span>
+          </div>
+          <div class="source-grid">
+            <button class="hud-btn keep-label active" id="src-synth">🎹 <span class="btn-label">原創示範曲</span></button>
+            <button class="hud-btn keep-label" id="src-file">📁 <span class="btn-label">上傳音訊檔</span></button>
+            <button class="hud-btn keep-label" id="src-mic">🎙️ <span class="btn-label">麥克風收音</span></button>
+            <button class="hud-btn keep-label" id="src-tab">🖥️ <span class="btn-label">分享分頁音訊</span></button>
+          </div>
+          <input type="file" id="audio-file-input" accept=".mp3,.wav,.m4a,.ogg,audio/*" style="display:none;" />
+        </div>
+
+        <!-- YouTube 嵌入與分頁音訊引導 -->
+        <div class="yt-box">
+          <div class="section-label" style="margin-bottom:2px;">
+            <span>YOUTUBE 播放器嵌入</span>
+          </div>
+          <div class="yt-input-row">
+            <input type="text" class="yt-input" id="yt-url-input" placeholder="貼上 YouTube 網址或影片 ID..." />
+            <button class="hud-btn keep-label" id="btn-load-yt">載入</button>
+          </div>
+          <div id="yt-player-wrap">
+            <iframe id="yt-iframe" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          </div>
+          <div class="status-banner" id="audio-status-msg">
+            目前為「原創示範合成器」，點擊底部播放鍵立即啟動。
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右側抽屜：視覺參數與色彩主題 -->
+    <aside class="hud-drawer right collapsed hud-hideable" id="drawer-right">
+      <div class="drawer-header">
+        <span>// 渲染管線與色彩參數</span>
+        <button class="hud-btn" id="close-right-drawer" style="padding:2px 7px;">✕</button>
+      </div>
+      <div class="drawer-body">
+        <!-- 主題選擇 -->
+        <div>
+          <div class="section-label"><span>色彩主題預設</span></div>
+          <div class="theme-grid" id="theme-grid">
+            <button class="theme-btn active" data-theme="neon">霓虹</button>
+            <button class="theme-btn" data-theme="candy">糖果</button>
+            <button class="theme-btn" data-theme="ocean">海洋</button>
+            <button class="theme-btn" data-theme="aurora">極光</button>
+          </div>
+        </div>
+
+        <!-- 自訂色相 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>自訂色相偏移 (Hue)</span>
+            <span class="val" id="val-hue">185°</span>
+          </div>
+          <input type="range" id="ctrl-hue" min="0" max="360" value="185" />
+        </div>
+
+        <!-- 亮度調整 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>場景亮度 (防過曝上限鎖定)</span>
+            <span class="val" id="val-brightness">70%</span>
+          </div>
+          <input type="range" id="ctrl-brightness" min="20" max="130" value="70" />
+        </div>
+
+        <!-- 粒子數量 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>粒子 / 幾何密度</span>
+            <span class="val" id="val-particles">2500</span>
+          </div>
+          <input type="range" id="ctrl-particles" min="500" max="5000" step="100" value="2500" />
+        </div>
+
+        <!-- 音樂律動強度 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>音樂律動靈敏度</span>
+            <span class="val" id="val-reactivity">1.20x</span>
+          </div>
+          <input type="range" id="ctrl-reactivity" min="0.3" max="2.5" step="0.05" value="1.2" />
+        </div>
+
+        <!-- 音樂線條長度 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>頻譜線條延伸長度</span>
+            <span class="val" id="val-linelen">1.00x</span>
+          </div>
+          <input type="range" id="ctrl-linelen" min="0.4" max="2.2" step="0.05" value="1.0" />
+        </div>
+
+        <!-- 主音量 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>主輸出音量</span>
+            <span class="val" id="val-volume">80%</span>
+          </div>
+          <input type="range" id="ctrl-volume" min="0" max="100" value="80" />
+        </div>
+
+        <!-- Bloom 發光開關 -->
+        <div style="display:flex; align-items:center; justify-content:space-between; padding-top:4px; border-top:1px solid var(--hud-border);">
+          <span style="font-size:12px;">UnrealBloom 輝光管線</span>
+          <button class="hud-btn keep-label active" id="btn-bloom-toggle">開啟中</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 底部戰術儀表台 -->
+    <footer class="hud-bottom-deck hud-hideable">
+      <div class="deck-controls">
+        <button class="btn-play-main" id="btn-play-pause" title="播放 / 暫停">▶</button>
+        <div class="track-meta">
+          <div class="track-title" id="track-title">SYNTHWAVE_CORE.SYS</div>
+          <div class="track-sub" id="track-mode">MODE: DEMO SYNTH</div>
+        </div>
+      </div>
+      <canvas id="spectrum-canvas" width="480" height="44"></canvas>
+    </footer>
+  </div>
+
+  <!-- 隱藏的 HTML5 Audio 元素（供上傳音檔循環播放） -->
+  <audio id="html-audio-player" loop crossorigin="anonymous"></audio>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+    /* ============================================================================
+     * 1. 裝置效能自動分級系統 (Desktop / Tablet / Mobile)
+     * ========================================================================== */
+    function detectDeviceTier() {
+      const w = window.innerWidth;
+      const ua = navigator.userAgent || '';
+      const isMobileUA = /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+      const isTabletUA = /iPad|Tablet/i.test(ua) || (isMobileUA && Math.min(w, window.innerHeight) >= 600);
+
+      if (w <= 600 || (isMobileUA && !isTabletUA)) {
+        return {
+          name: 'MOBILE',
+          targetFPS: 30,
+          maxDPR: 1.25,
+          defaultParticles: 1100,
+          defaultBloom: false
+        };
+      } else if (w <= 1024 || isTabletUA) {
+        return {
+          name: 'TABLET',
+          targetFPS: 45,
+          maxDPR: 1.5,
+          defaultParticles: 1800,
+          defaultBloom: true
+        };
+      }
+      return {
+        name: 'DESKTOP',
+        targetFPS: 60,
+        maxDPR: 2.0,
+        defaultParticles: 2500,
+        defaultBloom: true
+      };
+    }
+
+    const DEVICE_TIER = detectDeviceTier();
+
+    /* ============================================================================
+     * 2. 全域應用程式狀態
+     * ========================================================================== */
+    const THEMES = {
+      neon:   { hue: 185, primary: '#00f0ff', secondary: '#ff2a85', bg: 0x03060c },
+      candy:  { hue: 325, primary: '#ff6ec7', secondary: '#6ee7ff', bg: 0x0b0510 },
+      ocean:  { hue: 205, primary: '#18b6ff', secondary: '#00ffa3', bg: 0x020912 },
+      aurora: { hue: 145, primary: '#00ff9d', secondary: '#8c52ff', bg: 0x030b09 }
+    };
+
+    const STATE = {
+      currentEffect: 'laser_tunnel',
+      theme: 'neon',
+      hue: THEMES.neon.hue,
+      brightness: 0.70,       // 預設 70%
+      particleCount: DEVICE_TIER.defaultParticles,
+      reactivity: 1.20,
+      lineLength: 1.00,
+      volume: 0.80,
+      bloomEnabled: DEVICE_TIER.defaultBloom,
+      isPlaying: false,
+      audioMode: 'synth',     // 'synth' | 'file' | 'mic' | 'tab' | 'youtube_idle'
+      tabAudioActive: false,
+      isPageHidden: false
+    };
+
+    /* ============================================================================
+     * 3. Web Audio API 真實音訊分析引擎 (AudioEngine)
+     * ========================================================================== */
+    class AudioEngine {
+      constructor() {
+        this.ctx = null;
+        this.analyser = null;
+        this.masterGain = null;
+        this.freqData = null;
+
+        // 音源節點
+        this.fileSourceNode = null;
+        this.micStream = null;
+        this.micSourceNode = null;
+        this.tabStream = null;
+        this.tabSourceNode = null;
+
+        // 內建合成器排程
+        this.synthTimer = null;
+        this.synthStep = 0;
+
+        // 即時輸出數據
+        this.bass = 0;
+        this.mid = 0;
+        this.treble = 0;
+        this.bands32 = new Float32Array(32);
+      }
+
+      initContext() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+          this.analyser = this.ctx.createAnalyser();
+          this.analyser.fftSize = 1024;
+          this.analyser.smoothingTimeConstant = 0.82;
+          this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+
+          this.masterGain = this.ctx.createGain();
+          this.masterGain.gain.value = STATE.volume;
+          this.analyser.connect(this.masterGain);
+          this.masterGain.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      setVolume(val) {
+        STATE.volume = val;
+        if (this.masterGain && this.ctx) {
+          this.masterGain.gain.setTargetAtTime(val, this.ctx.currentTime, 0.03);
+        }
+      }
+
+      cleanupCurrentSource() {
+        // 停止合成器
+        if (this.synthTimer) {
+          clearInterval(this.synthTimer);
+          this.synthTimer = null;
+        }
+        // 暫停 HTML 音檔
+        const audioEl = document.getElementById('html-audio-player');
+        if (!audioEl.paused) {
+          audioEl.pause();
+        }
+        // 停止麥克風
+        if (this.micStream) {
+          this.micStream.getTracks().forEach(t => t.stop());
+          this.micStream = null;
+        }
+        if (this.micSourceNode) {
+          this.micSourceNode.disconnect();
+          this.micSourceNode = null;
+        }
+        // 停止分頁音訊
+        if (this.tabStream) {
+          this.tabStream.getTracks().forEach(t => t.stop());
+          this.tabStream = null;
+        }
+        if (this.tabSourceNode) {
+          this.tabSourceNode.disconnect();
+          this.tabSourceNode = null;
+        }
+        STATE.tabAudioActive = false;
+
+        // 確保一般模式下 analyser 有接回喇叭
+        if (this.analyser && this.masterGain) {
+          try { this.analyser.disconnect(); } catch (e) {}
+          this.analyser.connect(this.masterGain);
+        }
+      }
+
+      /* 模式 A：內建 Web Audio API 原創示範合成器 (Kick + Bass + Arp + HiHat) */
+      startSynth() {
+        this.initContext();
+        this.cleanupCurrentSource();
+        STATE.audioMode = 'synth';
+        STATE.isPlaying = true;
+        this.synthStep = 0;
+
+        const bpm = 124;
+        const stepMs = (60 / bpm / 4) * 1000; // 16分音符
+        const scale = [110, 130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 329.63];
+
+        const triggerStep = () => {
+          if (!STATE.isPlaying || STATE.audioMode !== 'synth') return;
+          const now = this.ctx.currentTime;
+          const step = this.synthStep % 16;
+
+          // 1. Kick (每拍 0, 4, 8, 12)
+          if (step % 4 === 0) {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(145, now);
+            osc.frequency.exponentialRampToValueAtTime(38, now + 0.14);
+            gain.gain.setValueAtTime(0.85, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+            osc.connect(gain);
+            gain.connect(this.analyser);
+            osc.start(now);
+            osc.stop(now + 0.25);
+          }
+
+          // 2. Rolling Bassline (反拍 2, 6, 10, 14)
+          if (step % 2 === 0) {
+            const osc = this.ctx.createOscillator();
+            const filter = this.ctx.createBiquadFilter();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            const rootFreq = (this.synthStep % 64 < 32) ? 55 : 65.41;
+            osc.frequency.setValueAtTime(step % 4 === 2 ? rootFreq * 2 : rootFreq, now);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(380, now);
+            filter.frequency.exponentialRampToValueAtTime(120, now + 0.16);
+            gain.gain.setValueAtTime(0.32, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.analyser);
+            osc.start(now);
+            osc.stop(now + 0.19);
+          }
+
+          // 3. Arpeggio 旋律 (中頻)
+          if (step % 2 === 1 || step === 14) {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            const note = scale[(step * 3 + Math.floor(this.synthStep / 16)) % scale.length] * 2;
+            osc.frequency.setValueAtTime(note, now);
+            gain.gain.setValueAtTime(0.18, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+            osc.connect(gain);
+            gain.connect(this.analyser);
+            osc.start(now);
+            osc.stop(now + 0.23);
+          }
+
+          // 4. Hi-Hat (高頻噪音)
+          if (step % 2 === 1) {
+            const bufferSize = Math.floor(this.ctx.sampleRate * 0.045);
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+            const hp = this.ctx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = 7200;
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(step % 4 === 3 ? 0.22 : 0.11, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+
+            noise.connect(hp);
+            hp.connect(gain);
+            gain.connect(this.analyser);
+            noise.start(now);
+          }
+
+          this.synthStep++;
+        };
+
+        triggerStep();
+        this.synthTimer = setInterval(triggerStep, stepMs);
+      }
+
+      /* 模式 B：上傳本地音訊檔 */
+      async loadAudioFile(file) {
+        this.initContext();
+        this.cleanupCurrentSource();
+        STATE.audioMode = 'file';
+
+        const audioEl = document.getElementById('html-audio-player');
+        const url = URL.createObjectURL(file);
+        audioEl.src = url;
+
+        if (!this.fileSourceNode) {
+          this.fileSourceNode = this.ctx.createMediaElementSource(audioEl);
+        }
+        this.fileSourceNode.connect(this.analyser);
+
+        await audioEl.play();
+        STATE.isPlaying = true;
+      }
+
+      /* 模式 C：麥克風收音（斷開喇叭防嘯叫） */
+      async startMicrophone() {
+        this.initContext();
+        this.cleanupCurrentSource();
+        STATE.audioMode = 'mic';
+
+        this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        this.micSourceNode = this.ctx.createMediaStreamSource(this.micStream);
+
+        // 斷開 analyser 到喇叭的連接，防止回授嘯叫
+        try { this.analyser.disconnect(); } catch (e) {}
+        this.micSourceNode.connect(this.analyser);
+        STATE.isPlaying = true;
+      }
+
+      /* 模式 D：Chrome / Edge 分頁音訊分享 */
+      async startTabAudioShare() {
+        this.initContext();
+        this.cleanupCurrentSource();
+        STATE.audioMode = 'tab';
+
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+
+        // 立即停止視訊軌節省效能
+        stream.getVideoTracks().forEach(track => track.stop());
+
+        const audioTracks = stream.getAudioTracks();
+        if (!audioTracks || audioTracks.length === 0) {
+          throw new Error('未偵測到分頁音訊軌，請確認分享視窗時有勾選「同時分享分頁音訊」。');
+        }
+
+        this.tabStream = stream;
+        this.tabSourceNode = this.ctx.createMediaStreamSource(stream);
+        // 避免分頁回音疊加，僅送入分析器
+        try { this.analyser.disconnect(); } catch (e) {}
+        this.tabSourceNode.connect(this.analyser);
+
+        STATE.tabAudioActive = true;
+        STATE.isPlaying = true;
+
+        audioTracks[0].onended = () => {
+          STATE.tabAudioActive = false;
+          STATE.isPlaying = false;
+          updateStatusBanner('分頁音訊分享已結束，頻譜已歸零。', true);
+          updatePlayButtonUI();
+        };
+      }
+
+      togglePlayPause() {
+        this.initContext();
+        if (STATE.audioMode === 'synth') {
+          if (STATE.isPlaying) {
+            STATE.isPlaying = false;
+            if (this.synthTimer) clearInterval(this.synthTimer);
+          } else {
+            this.startSynth();
+          }
+        } else if (STATE.audioMode === 'file') {
+          const audioEl = document.getElementById('html-audio-player');
+          if (audioEl.paused) {
+            audioEl.play();
+            STATE.isPlaying = true;
+          } else {
+            audioEl.pause();
+            STATE.isPlaying = false;
+          }
+        } else if (STATE.audioMode === 'mic' || STATE.audioMode === 'tab') {
+          STATE.isPlaying = !STATE.isPlaying;
+        }
+      }
+
+      /* 每幀分析頻譜 */
+      update() {
+        // 嚴格真實性規範：YouTube 未分享分頁音訊前，或未播放時，所有頻段強制歸零
+        const isYouTubeWithoutAudio = (STATE.audioMode === 'youtube_idle' && !STATE.tabAudioActive);
+        if (!this.analyser || !STATE.isPlaying || isYouTubeWithoutAudio) {
+          this.bass *= 0.82;
+          this.mid *= 0.82;
+          this.treble *= 0.82;
+          if (this.bass < 0.002) this.bass = 0;
+          if (this.mid < 0.002) this.mid = 0;
+          if (this.treble < 0.002) this.treble = 0;
+          for (let i = 0; i < 32; i++) {
+            this.bands32[i] *= 0.82;
+            if (this.bands32[i] < 0.002) this.bands32[i] = 0;
+          }
+          return;
+        }
+
+        this.analyser.getByteFrequencyData(this.freqData);
+        const len = this.freqData.length; // 512 bins (44.1kHz / 1024 ≈ 43Hz per bin)
+
+        // 低音 (20Hz - 250Hz -> bins 1..6)
+        let bassSum = 0;
+        for (let i = 1; i <= 6; i++) bassSum += this.freqData[i];
+        this.bass = (bassSum / (6 * 255));
+
+        // 中音 (250Hz - 2500Hz -> bins 7..58)
+        let midSum = 0;
+        for (let i = 7; i <= 58; i++) midSum += this.freqData[i];
+        this.mid = (midSum / (52 * 255));
+
+        // 高音 (2500Hz - 14000Hz -> bins 59..320)
+        let trebleSum = 0;
+        for (let i = 59; i <= 320; i++) trebleSum += this.freqData[i];
+        this.treble = (trebleSum / (262 * 255));
+
+        // 對數分佈抽取 32 頻段
+        const maxBin = Math.min(len - 1, 360);
+        for (let b = 0; b < 32; b++) {
+          const start = Math.floor(Math.pow(b / 32, 1.65) * maxBin);
+          const end = Math.max(start + 1, Math.floor(Math.pow((b + 1) / 32, 1.65) * maxBin));
+          let sum = 0;
+          for (let j = start; j < end; j++) {
+            sum += this.freqData[j];
+          }
+          this.bands32[b] = sum / ((end - start) * 255);
+        }
+      }
+    }
+
+    const audioEngine = new AudioEngine();
+
+    /* ============================================================================
+     * 4. Three.js 0.187.0 防過曝色彩渲染管線
+     * ========================================================================== */
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(THEMES.neon.bg);
+    scene.fog = new THREE.FogExp2(THEMES.neon.bg, 0.014);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
+    camera.position.set(0, 4, 24);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: DEVICE_TIER.name !== 'MOBILE',
+      preserveDrawingBuffer: true, // 確保 PNG 截圖不會拍出全黑畫面
+      powerPreference: 'high-performance'
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DEVICE_TIER.maxDPR));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // 嚴格防過曝色彩管線設定
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    container.appendChild(renderer.domElement);
+
+    // WebGL Context Lost 保護
+    renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      updateStatusBanner('偵測到 GPU 繪圖內容遺失，正在嘗試自動恢復...', true);
+    });
+    renderer.domElement.addEventListener('webglcontextrestored', () => {
+      buildEffect(STATE.currentEffect);
+      updateStatusBanner('GPU 繪圖管線已恢復正常。', false);
+    });
+
+    // 軌道控制器（滑鼠與觸控旋轉縮放）
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.minDistance = 4;
+    controls.maxDistance = 85;
+
+    // EffectComposer + 保守 UnrealBloomPass + OutputPass
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.42, // 保守強度
+      0.55, // 半徑
+      0.68  // 閾值，防止白化圓球
+    );
+    bloomPass.enabled = STATE.bloomEnabled;
+    composer.addPass(bloomPass);
+
+    // 末端必須串接 OutputPass 確保色彩空間與 ToneMapping 準確
+    const outputPass = new OutputPass();
+    composer.addPass(outputPass);
+
+    /* 輔助色彩函式：嚴格限制 HSL 明度上限 L <= 0.58，防止過曝白化 */
+    function getSafeColor(hueOffset = 0, sat = 0.85, baseLight = 0.50) {
+      const h = (((STATE.hue + hueOffset) % 360) + 360) % 360 / 360;
+      const scaledL = Math.min(0.58, baseLight * (0.45 + STATE.brightness * 0.55));
+      return new THREE.Color().setHSL(h, sat, Math.max(0.08, scaledL));
+    }
+
+    /* ============================================================================
+     * 5. 12 種 3D 音樂視覺特效工廠（切換時完整 dispose 舊資源）
+     * ========================================================================== */
+    let activeEffectGroup = null;
+    let activeEffectUpdater = null;
+
+    function disposeObject3D(obj) {
+      if (!obj) return;
+      obj.traverse((child) => {
+        if (child.geometry) {
+          child.geometry.dispose();
+        }
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => {
+              if (mat.map) mat.map.dispose();
+              mat.dispose();
+            });
+          } else {
+            if (child.material.map) child.material.map.dispose();
+            child.material.dispose();
+          }
+        }
+      });
+      scene.remove(obj);
+    }
+
+    const EFFECTS_META = [
+      // 6 種 V4 新特效
+      { id: 'laser_tunnel',      name: '雷射隧道', group: 'v4', tag: 'V4-01' },
+      { id: 'aurora_ribbon',     name: '極光絲帶', group: 'v4', tag: 'V4-02' },
+      { id: 'neon_wave',         name: '霓虹波形', group: 'v4', tag: 'V4-03' },
+      { id: 'particle_galaxy',   name: '粒子星河', group: 'v4', tag: 'V4-04' },
+      { id: 'fiber_optics',      name: '光纖絲線', group: 'v4', tag: 'V4-05' },
+      { id: 'circular_spectrum', name: '環形頻譜', group: 'v4', tag: 'V4-06' },
+      // 6 種經典粒子特效
+      { id: 'classic_sphere',    name: '聲波球體', group: 'classic', tag: 'CL-01' },
+      { id: 'classic_vortex',    name: '能量漩渦', group: 'classic', tag: 'CL-02' },
+      { id: 'classic_fountain',  name: '音律噴泉', group: 'classic', tag: 'CL-03' },
+      { id: 'classic_cube',      name: '頻譜矩陣', group: 'classic', tag: 'CL-04' },
+      { id: 'classic_dna',       name: '雙螺旋鏈', group: 'classic', tag: 'CL-05' },
+      { id: 'classic_starfield', name: '星際穿越', group: 'classic', tag: 'CL-06' }
+    ];
+
+    function buildEffect(effectId) {
+      if (activeEffectGroup) {
+        disposeObject3D(activeEffectGroup);
+        activeEffectGroup = null;
+        activeEffectUpdater = null;
+      }
+
+      const root = new THREE.Group();
+      scene.add(root);
+      activeEffectGroup = root;
+
+      const count = STATE.particleCount;
+
+      switch (effectId) {
+        /* --------------------------------------------------------------------
+         * 1. 雷射隧道 (laser_tunnel)
+         * ------------------------------------------------------------------ */
+        case 'laser_tunnel': {
+          camera.position.set(0, 0, 22);
+          controls.target.set(0, 0, -15);
+          const ringCount = 22;
+          const rings = [];
+          const octPts = [];
+          for (let s = 0; s <= 8; s++) {
+            const a = (s / 8) * Math.PI * 2;
+            octPts.push(new THREE.Vector3(Math.cos(a) * 6, Math.sin(a) * 6, 0));
+          }
+          const sharedGeo = new THREE.BufferGeometry().setFromPoints(octPts);
+
+          for (let i = 0; i < ringCount; i++) {
+            const mat = new THREE.LineBasicMaterial({
+              color: getSafeColor(i * 6, 0.9, 0.50),
+              transparent: true,
+              opacity: 0.85
+            });
+            const ring = new THREE.Line(sharedGeo, mat);
+            ring.position.z = -i * 3.5;
+            root.add(ring);
+            rings.push(ring);
+          }
+
+          // 8 條縱向雷射光束
+          const beamGeo = new THREE.BufferGeometry();
+          const beamPos = new Float32Array(8 * 2 * 3);
+          for (let s = 0; s < 8; s++) {
+            const a = (s / 8) * Math.PI * 2;
+            const x = Math.cos(a) * 6.2;
+            const y = Math.sin(a) * 6.2;
+            beamPos[s * 6] = x;     beamPos[s * 6 + 1] = y; beamPos[s * 6 + 2] = 15;
+            beamPos[s * 6 + 3] = x; beamPos[s * 6 + 4] = y; beamPos[s * 6 + 5] = -75;
+          }
+          beamGeo.setAttribute('position', new THREE.BufferAttribute(beamPos, 3));
+          const beamMat = new THREE.LineBasicMaterial({
+            color: getSafeColor(45, 0.85, 0.45),
+            transparent: true,
+            opacity: 0.45
+          });
+          const beams = new THREE.LineSegments(beamGeo, beamMat);
+          root.add(beams);
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            const speed = 10 + audio.bass * 38 * STATE.reactivity;
+            const pulse = 1 + audio.bass * 0.35 * STATE.reactivity;
+            beams.rotation.z += dt * (0.25 + audio.mid * 1.6);
+            beamMat.color.copy(getSafeColor(45 + elapsed * 10, 0.85, 0.44));
+
+            rings.forEach((ring, idx) => {
+              ring.position.z += speed * dt;
+              if (ring.position.z > 14) {
+                ring.position.z -= ringCount * 3.5;
+              }
+              const bandVal = audio.bands32[idx % 32] * STATE.reactivity;
+              const sc = pulse + bandVal * 0.28;
+              ring.scale.set(sc, sc, 1);
+              ring.rotation.z += dt * (0.3 + audio.mid * 2.0) * (idx % 2 === 0 ? 1 : -1);
+              const depthFade = THREE.MathUtils.clamp(1 - Math.abs(ring.position.z + 25) / 55, 0.15, 0.95);
+              ring.material.opacity = depthFade;
+              ring.material.color.copy(getSafeColor(idx * 8 + elapsed * 12, 0.88, 0.48));
+            });
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 2. 極光絲帶 (aurora_ribbon) — 7 層上下羽化漸隱絲帶
+         * ------------------------------------------------------------------ */
+        case 'aurora_ribbon': {
+          camera.position.set(0, 6, 26);
+          controls.target.set(0, 0, 0);
+          const layers = 7;
+          const segX = 96;
+          const ribbons = [];
+
+          for (let l = 0; l < layers; l++) {
+            const geo = new THREE.PlaneGeometry(36, 4.5, segX, 8);
+            const mat = new THREE.ShaderMaterial({
+              transparent: true,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+              blending: THREE.AdditiveBlending,
+              uniforms: {
+                uColorA: { value: getSafeColor(l * 18, 0.85, 0.46) },
+                uColorB: { value: getSafeColor(l * 18 + 65, 0.85, 0.42) },
+                uOpacity: { value: 0.34 }
+              },
+              vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                  vUv = uv;
+                  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+              `,
+              fragmentShader: `
+                uniform vec3 uColorA;
+                uniform vec3 uColorB;
+                uniform float uOpacity;
+                varying vec2 vUv;
+                void main() {
+                  // 上下羽化漸隱，避免硬邊與過曝白光
+                  float featherY = sin(vUv.y * 3.14159265);
+                  featherY = pow(max(0.0, featherY), 1.8);
+                  float featherX = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+                  vec3 col = mix(uColorA, uColorB, vUv.x);
+                  gl_FragColor = vec4(col, featherY * featherX * uOpacity);
+                }
+              `
+            });
+
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(0, (l - 3) * 1.1, (l - 3) * -2.6);
+            mesh.rotation.x = -0.22;
+            root.add(mesh);
+            ribbons.push({ mesh, geo, mat, layer: l });
+          }
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            const midAmp = (0.6 + audio.mid * 3.2) * STATE.reactivity;
+            const trebleRipple = (0.15 + audio.treble * 1.8) * STATE.reactivity;
+
+            ribbons.forEach(({ mesh, geo, mat, layer }) => {
+              mat.uniforms.uColorA.value.copy(getSafeColor(layer * 18 + elapsed * 8, 0.85, 0.45));
+              mat.uniforms.uColorB.value.copy(getSafeColor(layer * 18 + 65 + elapsed * 8, 0.85, 0.40));
+              mat.uniforms.uOpacity.value = Math.min(0.42, 0.22 + audio.mid * 0.25);
+
+              const pos = geo.attributes.position;
+              for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const origY = pos.getY(i);
+                const bandIdx = Math.floor(((x + 18) / 36) * 31);
+                const bEnergy = audio.bands32[THREE.MathUtils.clamp(bandIdx, 0, 31)];
+
+                const waveMain = Math.sin(x * 0.18 + elapsed * 1.6 + layer * 0.7) * midAmp;
+                const waveFine = Math.sin(x * 0.85 - elapsed * 4.5 + layer) * trebleRipple * 0.35;
+                const zDisp = Math.cos(x * 0.15 + elapsed * 1.2 + layer) * 1.8 + bEnergy * 2.5 * STATE.lineLength;
+
+                pos.setZ(i, zDisp + waveMain + waveFine);
+                pos.setY(i, origY + bEnergy * 1.4 * STATE.reactivity);
+              }
+              pos.needsUpdate = true;
+            });
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 3. 霓虹波形 (neon_wave) — 16 層深度排列長條頻譜波 + 黑色星空
+         * ------------------------------------------------------------------ */
+        case 'neon_wave': {
+          camera.position.set(0, 9, 25);
+          controls.target.set(0, 0, -4);
+          const rows = 16;
+          const cols = 64;
+          const waveLines = [];
+
+          for (let r = 0; r < rows; r++) {
+            const geo = new THREE.BufferGeometry();
+            const positions = new Float32Array(cols * 3);
+            for (let c = 0; c < cols; c++) {
+              positions[c * 3] = (c / (cols - 1) - 0.5) * 34;
+              positions[c * 3 + 1] = 0;
+              positions[c * 3 + 2] = (r - rows / 2) * 1.8;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const mat = new THREE.LineBasicMaterial({
+              color: getSafeColor(r * 10, 0.9, 0.50),
+              transparent: true,
+              opacity: 1 - (r / rows) * 0.65
+            });
+            const line = new THREE.Line(geo, mat);
+            root.add(line);
+            waveLines.push({ line, geo, mat, row: r });
+          }
+
+          // 黑色星空背景微粒
+          const starCount = Math.min(800, Math.floor(count * 0.35));
+          const starGeo = new THREE.BufferGeometry();
+          const starPos = new Float32Array(starCount * 3);
+          for (let i = 0; i < starCount; i++) {
+            starPos[i * 3] = (Math.random() - 0.5) * 90;
+            starPos[i * 3 + 1] = Math.random() * 35 - 5;
+            starPos[i * 3 + 2] = (Math.random() - 0.5) * 90;
+          }
+          starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+          const starMat = new THREE.PointsMaterial({
+            color: getSafeColor(0, 0.4, 0.45),
+            size: 0.22,
+            transparent: true,
+            opacity: 0.65
+          });
+          root.add(new THREE.Points(starGeo, starMat));
+
+          // 歷史頻譜緩衝區
+          const history = Array.from({ length: rows }, () => new Float32Array(32));
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            // 推入最新頻譜至第 0 排，舊資料往後推移
+            for (let r = rows - 1; r > 0; r--) {
+              history[r].set(history[r - 1]);
+            }
+            history[0].set(audio.bands32);
+
+            waveLines.forEach(({ geo, mat, row }) => {
+              mat.color.copy(getSafeColor(row * 9 + elapsed * 10, 0.9, 0.50));
+              const pos = geo.attributes.position;
+              const rowData = history[row];
+              for (let c = 0; c < cols; c++) {
+                // 對稱頻譜映射
+                const norm = Math.abs((c / (cols - 1)) * 2 - 1);
+                const bandIdx = Math.min(31, Math.floor(norm * 31));
+                const val = rowData[bandIdx] * 7.5 * STATE.reactivity * STATE.lineLength;
+                const ripple = Math.sin(c * 0.25 + elapsed * 3 - row * 0.4) * 0.25;
+                pos.setY(c, val + ripple);
+              }
+              pos.needsUpdate = true;
+            });
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 4. 粒子星河 (particle_galaxy) — BufferGeometry + ShaderMaterial 單一 Draw Call
+         * ------------------------------------------------------------------ */
+        case 'particle_galaxy': {
+          camera.position.set(0, 14, 24);
+          controls.target.set(0, 0, 0);
+          const geo = new THREE.BufferGeometry();
+          const positions = new Float32Array(count * 3);
+          const aAngle = new Float32Array(count);
+          const aRadius = new Float32Array(count);
+          const aRandom = new Float32Array(count);
+          const branches = 4;
+
+          for (let i = 0; i < count; i++) {
+            const r = Math.pow(Math.random(), 0.75) * 16 + 0.5;
+            const branchAngle = ((i % branches) / branches) * Math.PI * 2;
+            const spinAngle = r * 0.45;
+            const spread = (Math.random() - 0.5) * (1.8 / (1 + r * 0.12));
+
+            positions[i * 3] = Math.cos(branchAngle + spinAngle + spread) * r;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * (1.6 / (1 + r * 0.15));
+            positions[i * 3 + 2] = Math.sin(branchAngle + spinAngle + spread) * r;
+
+            aAngle[i] = branchAngle + spinAngle + spread;
+            aRadius[i] = r;
+            aRandom[i] = Math.random();
+          }
+
+          geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+          geo.setAttribute('aAngle', new THREE.BufferAttribute(aAngle, 1));
+          geo.setAttribute('aRadius', new THREE.BufferAttribute(aRadius, 1));
+          geo.setAttribute('aRandom', new THREE.BufferAttribute(aRandom, 1));
+
+          const mat = new THREE.ShaderMaterial({
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            uniforms: {
+              uTime: { value: 0 },
+              uBass: { value: 0 },
+              uMid: { value: 0 },
+              uTreble: { value: 0 },
+              uColorInner: { value: getSafeColor(0, 0.9, 0.54) },
+              uColorOuter: { value: getSafeColor(90, 0.85, 0.46) },
+              uPixelRatio: { value: renderer.getPixelRatio() }
+            },
+            vertexShader: `
+              attribute float aRadius;
+              attribute float aRandom;
+              uniform float uTime;
+              uniform float uBass;
+              uniform float uTreble;
+              uniform float uPixelRatio;
+              varying float vRadius;
+              varying float vTwinkle;
+              void main() {
+                vRadius = aRadius;
+                vec3 pos = position;
+                float expand = 1.0 + uBass * 0.38 * (1.0 - aRadius / 20.0);
+                pos.xz *= expand;
+                pos.y += sin(uTime * 3.0 + aRadius * 0.8 + aRandom * 6.28) * (0.2 + uBass * 1.1);
+
+                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+
+                float twinkle = 0.7 + 0.5 * sin(uTime * 8.0 + aRandom * 40.0) * (0.3 + uTreble * 1.5);
+                vTwinkle = twinkle;
+                gl_PointSize = (18.0 + aRandom * 16.0) * twinkle * uPixelRatio / max(1.0, -mvPosition.z);
+              }
+            `,
+            fragmentShader: `
+              uniform vec3 uColorInner;
+              uniform vec3 uColorOuter;
+              varying float vRadius;
+              varying float vTwinkle;
+              void main() {
+                float d = length(gl_PointCoord - vec2(0.5));
+                if (d > 0.5) discard;
+                float alpha = smoothstep(0.5, 0.08, d) * 0.85;
+                vec3 col = mix(uColorInner, uColorOuter, clamp(vRadius / 16.0, 0.0, 1.0));
+                gl_FragColor = vec4(col * clamp(vTwinkle, 0.5, 1.15), alpha);
+              }
+            `
+          });
+
+          const points = new THREE.Points(geo, mat);
+          root.add(points);
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            mat.uniforms.uTime.value = elapsed;
+            mat.uniforms.uBass.value = audio.bass * STATE.reactivity;
+            mat.uniforms.uMid.value = audio.mid * STATE.reactivity;
+            mat.uniforms.uTreble.value = audio.treble * STATE.reactivity;
+            mat.uniforms.uColorInner.value.copy(getSafeColor(0, 0.9, 0.52));
+            mat.uniforms.uColorOuter.value.copy(getSafeColor(85, 0.85, 0.45));
+            points.rotation.y += dt * (0.18 + audio.mid * 1.45 * STATE.reactivity);
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 5. 光纖絲線 (fiber_optics) — 單一 LineSegments 極低 Draw Calls
+         * ------------------------------------------------------------------ */
+        case 'fiber_optics': {
+          camera.position.set(0, 8, 22);
+          controls.target.set(0, 4, 0);
+          const strandCount = Math.min(360, Math.floor(count / 7));
+          const segsPerStrand = 10;
+          const totalSegments = strandCount * segsPerStrand;
+          const positions = new Float32Array(totalSegments * 2 * 3);
+          const colors = new Float32Array(totalSegments * 2 * 3);
+          const seeds = [];
+
+          for (let s = 0; s < strandCount; s++) {
+            const angle = Math.random() * Math.PI * 2;
+            const rad = Math.sqrt(Math.random()) * 11;
+            seeds.push({
+              bx: Math.cos(angle) * rad,
+              bz: Math.sin(angle) * rad,
+              height: 6 + Math.random() * 8,
+              phase: Math.random() * Math.PI * 2,
+              band: s % 32
+            });
+          }
+
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+          geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+          const mat = new THREE.LineBasicMaterial({
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.82
+          });
+          const lines = new THREE.LineSegments(geo, mat);
+          root.add(lines);
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            const posArr = geo.attributes.position.array;
+            const colArr = geo.attributes.color.array;
+            const baseCol = getSafeColor(0, 0.85, 0.36);
+            const tipCol = getSafeColor(65, 0.92, 0.56);
+
+            let ptr = 0;
+            for (let s = 0; s < strandCount; s++) {
+              const seed = seeds[s];
+              const bandEnergy = audio.bands32[seed.band] * STATE.reactivity;
+              const hTotal = seed.height * STATE.lineLength * (0.75 + bandEnergy * 0.65);
+              const swayX = Math.sin(elapsed * 1.4 + seed.phase) * (1.2 + audio.mid * 4.5 * STATE.reactivity);
+              const swayZ = Math.cos(elapsed * 1.2 + seed.phase) * (1.2 + audio.mid * 4.5 * STATE.reactivity);
+
+              for (let k = 0; k < segsPerStrand; k++) {
+                const t0 = k / segsPerStrand;
+                const t1 = (k + 1) / segsPerStrand;
+
+                // 高頻末端震動
+                const vib0 = Math.pow(t0, 2.5) * Math.sin(elapsed * 22 + seed.phase * 5) * audio.treble * 1.6 * STATE.reactivity;
+                const vib1 = Math.pow(t1, 2.5) * Math.sin(elapsed * 22 + seed.phase * 5 + 0.5) * audio.treble * 1.6 * STATE.reactivity;
+
+                const x0 = seed.bx + swayX * t0 * t0 + vib0;
+                const y0 = t0 * hTotal - 3;
+                const z0 = seed.bz + swayZ * t0 * t0;
+
+                const x1 = seed.bx + swayX * t1 * t1 + vib1;
+                const y1 = t1 * hTotal - 3;
+                const z1 = seed.bz + swayZ * t1 * t1;
+
+                posArr[ptr] = x0;     posArr[ptr + 1] = y0; posArr[ptr + 2] = z0;
+                posArr[ptr + 3] = x1; posArr[ptr + 4] = y1; posArr[ptr + 5] = z1;
+
+                const c0 = baseCol.clone().lerp(tipCol, t0);
+                const c1 = baseCol.clone().lerp(tipCol, t1);
+                colArr[ptr] = c0.r;     colArr[ptr + 1] = c0.g; colArr[ptr + 2] = c0.b;
+                colArr[ptr + 3] = c1.r; colArr[ptr + 4] = c1.g; colArr[ptr + 5] = c1.b;
+
+                ptr += 6;
+              }
+            }
+            geo.attributes.position.needsUpdate = true;
+            geo.attributes.color.needsUpdate = true;
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 6. 環形頻譜 (circular_spectrum) — 3 層中心鏤空同心放射銳利細線
+         * ------------------------------------------------------------------ */
+        case 'circular_spectrum': {
+          camera.position.set(0, 0, 23);
+          controls.target.set(0, 0, 0);
+          const layerConfigs = [
+            { rays: 96,  innerR: 3.4, z: 0.8,  hueOff: 0 },
+            { rays: 64,  innerR: 6.2, z: 0.0,  hueOff: 55 },
+            { rays: 48,  innerR: 8.8, z: -0.8, hueOff: 120 }
+          ];
+
+          const ringLayers = layerConfigs.map(cfg => {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(cfg.rays * 2 * 3);
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const mat = new THREE.LineBasicMaterial({
+              color: getSafeColor(cfg.hueOff, 0.92, 0.52),
+              transparent: true,
+              opacity: 0.9
+            });
+            const segs = new THREE.LineSegments(geo, mat);
+            segs.position.z = cfg.z;
+            root.add(segs);
+            return { ...cfg, geo, mat, segs };
+          });
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            const bassPulse = 1 + audio.bass * 0.25 * STATE.reactivity;
+
+            ringLayers.forEach((layer, lIdx) => {
+              layer.mat.color.copy(getSafeColor(layer.hueOff + elapsed * 10, 0.92, 0.52));
+              layer.segs.rotation.z += dt * (0.15 + audio.mid * 0.6) * (lIdx % 2 === 0 ? 1 : -1);
+              const pos = layer.geo.attributes.position.array;
+
+              for (let i = 0; i < layer.rays; i++) {
+                const angle = (i / layer.rays) * Math.PI * 2;
+                // 對稱取樣 32 頻段
+                const halfIdx = i < layer.rays / 2 ? i : (layer.rays - 1 - i);
+                const bandIdx = Math.floor((halfIdx / (layer.rays / 2)) * 31);
+                const energy = audio.bands32[THREE.MathUtils.clamp(bandIdx, 0, 31)];
+
+                const r0 = layer.innerR * bassPulse;
+                const r1 = r0 + (0.35 + energy * 4.2 * STATE.reactivity * STATE.lineLength);
+
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                const p = i * 6;
+                pos[p] = cos * r0;     pos[p + 1] = sin * r0;     pos[p + 2] = 0;
+                pos[p + 3] = cos * r1; pos[p + 4] = sin * r1; pos[p + 5] = 0;
+              }
+              layer.geo.attributes.position.needsUpdate = true;
+            });
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 7. 聲波球體 (classic_sphere)
+         * ------------------------------------------------------------------ */
+        case 'classic_sphere': {
+          camera.position.set(0, 2, 22);
+          controls.target.set(0, 0, 0);
+          const geo = new THREE.BufferGeometry();
+          const basePos = new Float32Array(count * 3);
+          const curPos = new Float32Array(count * 3);
+          const radius = 7.5;
+
+          for (let i = 0; i < count; i++) {
+            const phi = Math.acos(1 - 2 * (i + 0.5) / count);
+            const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+            const x = Math.sin(phi) * Math.cos(theta) * radius;
+            const y = Math.cos(phi) * radius;
+            const z = Math.sin(phi) * Math.sin(theta) * radius;
+            basePos[i * 3] = curPos[i * 3] = x;
+            basePos[i * 3 + 1] = curPos[i * 3 + 1] = y;
+            basePos[i * 3 + 2] = curPos[i * 3 + 2] = z;
+          }
+
+          geo.setAttribute('position', new THREE.BufferAttribute(curPos, 3));
+          const mat = new THREE.PointsMaterial({
+            color: getSafeColor(0, 0.9, 0.52),
+            size: 0.22,
+            transparent: true,
+            opacity: 0.88
+          });
+          const pts = new THREE.Points(geo, mat);
+          root.add(pts);
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            mat.color.copy(getSafeColor(elapsed * 12, 0.9, 0.52));
+            pts.rotation.y += dt * (0.25 + audio.mid * 0.9);
+            const pos = geo.attributes.position.array;
+            const bassAmp = audio.bass * 3.2 * STATE.reactivity;
+            const trebleAmp = audio.treble * 1.4 * STATE.reactivity;
+
+            for (let i = 0; i < count; i++) {
+              const bx = basePos[i * 3];
+              const by = basePos[i * 3 + 1];
+              const bz = basePos[i * 3 + 2];
+              const band = audio.bands32[i % 32];
+              const wave = Math.sin(by * 0.7 + elapsed * 5) * trebleAmp;
+              const scale = 1 + (bassAmp * 0.25) + band * 0.32 * STATE.reactivity + wave * 0.08;
+              pos[i * 3] = bx * scale;
+              pos[i * 3 + 1] = by * scale;
+              pos[i * 3 + 2] = bz * scale;
+            }
+            geo.attributes.position.needsUpdate = true;
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 8. 能量漩渦 (classic_vortex)
+         * ------------------------------------------------------------------ */
+        case 'classic_vortex': {
+          camera.position.set(0, 13, 21);
+          controls.target.set(0, 0, 0);
+          const geo = new THREE.BufferGeometry();
+          const pos = new Float32Array(count * 3);
+          const meta = [];
+
+          for (let i = 0; i < count; i++) {
+            const r = 1.5 + Math.random() * 14;
+            const angle = Math.random() * Math.PI * 2;
+            const y = (Math.random() - 0.5) * 8;
+            meta.push({ r, angle, y, speed: 0.5 + (15 / r) * 0.35 });
+            pos[i * 3] = Math.cos(angle) * r;
+            pos[i * 3 + 1] = y;
+            pos[i * 3 + 2] = Math.sin(angle) * r;
+          }
+
+          geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          const mat = new THREE.PointsMaterial({
+            color: getSafeColor(30, 0.9, 0.52),
+            size: 0.24,
+            transparent: true,
+            opacity: 0.85
+          });
+          const pts = new THREE.Points(geo, mat);
+          root.add(pts);
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            mat.color.copy(getSafeColor(30 + elapsed * 10, 0.9, 0.52));
+            const arr = geo.attributes.position.array;
+            const rotBoost = 1 + audio.mid * 3.8 * STATE.reactivity;
+
+            for (let i = 0; i < count; i++) {
+              const m = meta[i];
+              m.angle += dt * m.speed * rotBoost;
+              const band = audio.bands32[i % 32];
+              const curR = m.r * (1 - audio.bass * 0.15 * STATE.reactivity);
+              arr[i * 3] = Math.cos(m.angle) * curR;
+              arr[i * 3 + 1] = m.y + Math.sin(m.angle * 2 + elapsed * 3) * (0.4 + band * 3.0 * STATE.reactivity);
+              arr[i * 3 + 2] = Math.sin(m.angle) * curR;
+            }
+            geo.attributes.position.needsUpdate = true;
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 9. 音律噴泉 (classic_fountain)
+         * ------------------------------------------------------------------ */
+        case 'classic_fountain': {
+          camera.position.set(0, 8, 25);
+          controls.target.set(0, 3, 0);
+          const geo = new THREE.BufferGeometry();
+          const pos = new Float32Array(count * 3);
+          const particles = [];
+
+          for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 1.5 + Math.random() * 4.5;
+            particles.push({
+              x: 0, y: -4, z: 0,
+              vx: Math.cos(angle) * speed,
+              vy: 8 + Math.random() * 10,
+              vz: Math.sin(angle) * speed,
+              age: Math.random() * 2.5
+            });
+          }
+
+          geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          const mat = new THREE.PointsMaterial({
+            color: getSafeColor(190, 0.9, 0.52),
+            size: 0.24,
+            transparent: true,
+            opacity: 0.85
+          });
+          root.add(new THREE.Points(geo, mat));
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            mat.color.copy(getSafeColor(elapsed * 14, 0.9, 0.52));
+            const arr = geo.attributes.position.array;
+            const boost = 1 + audio.bass * 1.15 * STATE.reactivity;
+
+            for (let i = 0; i < count; i++) {
+              const p = particles[i];
+              p.age += dt;
+              const t = p.age;
+              const x = p.vx * t * (0.8 + audio.mid * 0.5);
+              const y = -4 + (p.vy * boost) * t - 0.5 * 9.8 * t * t;
+              const z = p.vz * t * (0.8 + audio.mid * 0.5);
+
+              if (y < -4.5) {
+                p.age = 0;
+              }
+              arr[i * 3] = x;
+              arr[i * 3 + 1] = Math.max(-4.5, y);
+              arr[i * 3 + 2] = z;
+            }
+            geo.attributes.position.needsUpdate = true;
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 10. 頻譜矩陣 (classic_cube) — 3D 粒子矩陣對應 32 頻段
+         * ------------------------------------------------------------------ */
+        case 'classic_cube': {
+          camera.position.set(16, 14, 20);
+          controls.target.set(0, 0, 0);
+          const grid = 16; // 16 x 16 = 256 柱，每柱多個垂直點
+          const ptsPerCol = Math.max(4, Math.floor(count / (grid * grid)));
+          const total = grid * grid * ptsPerCol;
+          const geo = new THREE.BufferGeometry();
+          const pos = new Float32Array(total * 3);
+
+          geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          const mat = new THREE.PointsMaterial({
+            color: getSafeColor(0, 0.9, 0.52),
+            size: 0.26,
+            transparent: true,
+            opacity: 0.9
+          });
+          const pts = new THREE.Points(geo, mat);
+          root.add(pts);
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            mat.color.copy(getSafeColor(elapsed * 8, 0.9, 0.52));
+            pts.rotation.y += dt * 0.2;
+            const arr = geo.attributes.position.array;
+            let idx = 0;
+
+            for (let gx = 0; gx < grid; gx++) {
+              for (let gz = 0; gz < grid; gz++) {
+                const bandIdx = (gx + gz) % 32;
+                const h = (0.6 + audio.bands32[bandIdx] * 11 * STATE.reactivity * STATE.lineLength);
+                const wx = (gx - grid / 2 + 0.5) * 1.15;
+                const wz = (gz - grid / 2 + 0.5) * 1.15;
+
+                for (let py = 0; py < ptsPerCol; py++) {
+                  const wy = (py / ptsPerCol) * h - 3;
+                  arr[idx++] = wx;
+                  arr[idx++] = wy;
+                  arr[idx++] = wz;
+                }
+              }
+            }
+            geo.attributes.position.needsUpdate = true;
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 11. 雙螺旋鏈 (classic_dna)
+         * ------------------------------------------------------------------ */
+        case 'classic_dna': {
+          camera.position.set(0, 2, 24);
+          controls.target.set(0, 0, 0);
+          const geo = new THREE.BufferGeometry();
+          const pos = new Float32Array(count * 3);
+          geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+
+          const mat = new THREE.PointsMaterial({
+            color: getSafeColor(120, 0.9, 0.52),
+            size: 0.25,
+            transparent: true,
+            opacity: 0.9
+          });
+          const dnaPts = new THREE.Points(geo, mat);
+          root.add(dnaPts);
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            mat.color.copy(getSafeColor(elapsed * 12, 0.9, 0.52));
+            dnaPts.rotation.y += dt * (0.4 + audio.mid * 2.2 * STATE.reactivity);
+            const arr = geo.attributes.position.array;
+            const radBase = 4.2 * (1 + audio.bass * 0.35 * STATE.reactivity);
+
+            for (let i = 0; i < count; i++) {
+              const t = (i / count) * 2 - 1; // -1..1
+              const y = t * 14;
+              const band = audio.bands32[i % 32];
+              const isBridge = (i % 7 === 0);
+
+              if (isBridge) {
+                const strandAngle = t * Math.PI * 5;
+                const lerpVal = ((i * 13) % 100) / 100 * 2 - 1;
+                arr[i * 3] = Math.cos(strandAngle) * radBase * lerpVal;
+                arr[i * 3 + 1] = y;
+                arr[i * 3 + 2] = Math.sin(strandAngle) * radBase * lerpVal;
+              } else {
+                const strand = (i % 2 === 0) ? 0 : Math.PI;
+                const angle = t * Math.PI * 5 + strand;
+                const r = radBase + band * 1.8 * STATE.reactivity;
+                arr[i * 3] = Math.cos(angle) * r;
+                arr[i * 3 + 1] = y;
+                arr[i * 3 + 2] = Math.sin(angle) * r;
+              }
+            }
+            geo.attributes.position.needsUpdate = true;
+          };
+          break;
+        }
+
+        /* --------------------------------------------------------------------
+         * 12. 星際穿越 (classic_starfield)
+         * ------------------------------------------------------------------ */
+        case 'classic_starfield': {
+          camera.position.set(0, 0, 20);
+          controls.target.set(0, 0, -20);
+          const starLines = Math.min(900, Math.floor(count * 0.45));
+          const geo = new THREE.BufferGeometry();
+          const pos = new Float32Array(starLines * 2 * 3);
+          const stars = [];
+
+          for (let i = 0; i < starLines; i++) {
+            stars.push({
+              x: (Math.random() - 0.5) * 60,
+              y: (Math.random() - 0.5) * 45,
+              z: -Math.random() * 110 + 15
+            });
+          }
+
+          geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          const mat = new THREE.LineBasicMaterial({
+            color: getSafeColor(200, 0.85, 0.54),
+            transparent: true,
+            opacity: 0.88
+          });
+          root.add(new THREE.LineSegments(geo, mat));
+
+          activeEffectUpdater = (dt, elapsed, audio) => {
+            mat.color.copy(getSafeColor(elapsed * 8, 0.85, 0.54));
+            const warpSpeed = 24 + audio.bass * 95 * STATE.reactivity;
+            const streakLen = (1.2 + audio.bass * 7.5 * STATE.reactivity) * STATE.lineLength;
+            const arr = geo.attributes.position.array;
+
+            for (let i = 0; i < starLines; i++) {
+              const s = stars[i];
+              s.z += warpSpeed * dt;
+              if (s.z > 22) {
+                s.z = -95;
+                s.x = (Math.random() - 0.5) * 60;
+                s.y = (Math.random() - 0.5) * 45;
+              }
+              const p = i * 6;
+              arr[p] = s.x;     arr[p + 1] = s.y; arr[p + 2] = s.z;
+              arr[p + 3] = s.x; arr[p + 4] = s.y; arr[p + 5] = s.z - streakLen;
+            }
+            geo.attributes.position.needsUpdate = true;
+          };
+          break;
+        }
+      }
+    }
+
+    /* ============================================================================
+     * 6. 底部 32 頻段即時頻譜儀繪製
+     * ========================================================================== */
+    const specCanvas = document.getElementById('spectrum-canvas');
+    const specCtx = specCanvas.getContext('2d');
+
+    function drawSpectrumBar() {
+      const w = specCanvas.width;
+      const h = specCanvas.height;
+      specCtx.clearRect(0, 0, w, h);
+
+      const barCount = 32;
+      const gap = 3;
+      const barW = (w - gap * (barCount + 1)) / barCount;
+
+      for (let i = 0; i < barCount; i++) {
+        const val = audioEngine.bands32[i];
+        const barH = Math.max(2, val * (h - 6));
+        const x = gap + i * (barW + gap);
+        const y = h - barH - 2;
+
+        const hue = (STATE.hue + i * 3) % 360;
+        specCtx.fillStyle = `hsl(${hue}, 90%, 54%)`;
+        specCtx.fillRect(x, y, barW, barH);
+      }
+    }
+
+    /* ============================================================================
+     * 7. UI 控制項與事件綁定
+     * ========================================================================== */
+    function updateStatusBanner(msg, isWarn = false) {
+      const el = document.getElementById('audio-status-msg');
+      el.textContent = msg;
+      el.classList.toggle('warn', isWarn);
+    }
+
+    function updatePlayButtonUI() {
+      const btn = document.getElementById('btn-play-pause');
+      btn.textContent = STATE.isPlaying ? '⏸' : '▶';
+    }
+
+    function setActiveSourceButton(btnId) {
+      ['src-synth', 'src-file', 'src-mic', 'src-tab'].forEach(id => {
+        document.getElementById(id).classList.toggle('active', id === btnId);
+      });
+    }
+
+    // 渲染 12 特效按鈕
+    const v4Grid = document.getElementById('fx-grid-v4');
+    const clGrid = document.getElementById('fx-grid-classic');
+
+    EFFECTS_META.forEach(fx => {
+      const btn = document.createElement('button');
+      btn.className = 'fx-btn' + (fx.id === STATE.currentEffect ? ' active' : '');
+      btn.dataset.fx = fx.id;
+      btn.innerHTML = `<span>${fx.name}</span><span class="tag">${fx.tag}</span>`;
+      btn.addEventListener('click', () => {
+        STATE.currentEffect = fx.id;
+        document.querySelectorAll('.fx-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // 切換特效時音訊不中斷
+        buildEffect(fx.id);
+      });
+      (fx.group === 'v4' ? v4Grid : clGrid).appendChild(btn);
+    });
+
+    // 抽屜開關（手機上互斥避免遮擋）
+    const drawerLeft = document.getElementById('drawer-left');
+    const drawerRight = document.getElementById('drawer-right');
+    const toggleLeftBtn = document.getElementById('toggle-left-drawer');
+    const toggleRightBtn = document.getElementById('toggle-right-drawer');
+
+    // 手機預設收合右側抽屜，若螢幕極窄則左側也可一鍵收合
+    if (window.innerWidth <= 600) {
+      drawerLeft.classList.add('collapsed');
+      toggleLeftBtn.classList.remove('active');
+    }
+
+    toggleLeftBtn.addEventListener('click', () => {
+      const willOpen = drawerLeft.classList.contains('collapsed');
+      drawerLeft.classList.toggle('collapsed');
+      toggleLeftBtn.classList.toggle('active', willOpen);
+      if (willOpen && window.innerWidth <= 900) {
+        drawerRight.classList.add('collapsed');
+        toggleRightBtn.classList.remove('active');
+      }
+    });
+
+    toggleRightBtn.addEventListener('click', () => {
+      const willOpen = drawerRight.classList.contains('collapsed');
+      drawerRight.classList.toggle('collapsed');
+      toggleRightBtn.classList.toggle('active', willOpen);
+      if (willOpen && window.innerWidth <= 900) {
+        drawerLeft.classList.add('collapsed');
+        toggleLeftBtn.classList.remove('active');
+      }
+    });
+
+    document.getElementById('close-left-drawer').addEventListener('click', () => {
+      drawerLeft.classList.add('collapsed');
+      toggleLeftBtn.classList.remove('active');
+    });
+
+    document.getElementById('close-right-drawer').addEventListener('click', () => {
+      drawerRight.classList.add('collapsed');
+      toggleRightBtn.classList.remove('active');
+    });
+
+    // 播放 / 暫停
+    document.getElementById('btn-play-pause').addEventListener('click', () => {
+      if (STATE.audioMode === 'youtube_idle' && !STATE.tabAudioActive) {
+        updateStatusBanner('YouTube 跨來源受限：請點擊「分享分頁音訊」並勾選分頁音訊軌，頻譜才會真實跳動。', true);
+        return;
+      }
+      if (!STATE.isPlaying && STATE.audioMode === 'synth') {
+        audioEngine.startSynth();
+      } else {
+        audioEngine.togglePlayPause();
+      }
+      updatePlayButtonUI();
+    });
+
+    // 音訊源 1：原創示範曲
+    document.getElementById('src-synth').addEventListener('click', () => {
+      audioEngine.startSynth();
+      setActiveSourceButton('src-synth');
+      document.getElementById('track-title').textContent = 'SYNTHWAVE_CORE.SYS';
+      document.getElementById('track-mode').textContent = 'MODE: DEMO SYNTH';
+      updateStatusBanner('正在播放內建 Web Audio 原創示範合成器（四軌即時驅動）。', false);
+      updatePlayButtonUI();
+    });
+
+    // 音訊源 2：上傳音訊檔
+    const fileInput = document.getElementById('audio-file-input');
+    document.getElementById('src-file').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        await audioEngine.loadAudioFile(file);
+        setActiveSourceButton('src-file');
+        document.getElementById('track-title').textContent = file.name;
+        document.getElementById('track-mode').textContent = 'MODE: LOCAL AUDIO';
+        updateStatusBanner(`已載入並循環播放：${file.name}`, false);
+        updatePlayButtonUI();
+      } catch (err) {
+        updateStatusBanner('音檔載入失敗，請確認格式為 MP3 / WAV / M4A / OGG。', true);
+      }
+    });
+
+    // 拖放檔案支援
+    const dropOverlay = document.getElementById('drop-overlay');
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropOverlay.classList.add('active');
+    });
+    window.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget === null) dropOverlay.classList.remove('active');
+    });
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dropOverlay.classList.remove('active');
+      const file = e.dataTransfer?.files?.[0];
+      if (file) {
+        await audioEngine.loadAudioFile(file);
+        setActiveSourceButton('src-file');
+        document.getElementById('track-title').textContent = file.name;
+        document.getElementById('track-mode').textContent = 'MODE: LOCAL AUDIO';
+        updateStatusBanner(`已拖放載入：${file.name}`, false);
+        updatePlayButtonUI();
+      }
+    });
+
+    // 音訊源 3：麥克風收音
+    document.getElementById('src-mic').addEventListener('click', async () => {
+      try {
+        await audioEngine.startMicrophone();
+        setActiveSourceButton('src-mic');
+        document.getElementById('track-title').textContent = 'LIVE_MIC_INPUT';
+        document.getElementById('track-mode').textContent = 'MODE: MICROPHONE';
+        updateStatusBanner('麥克風即時收音中（已自動靜音喇叭輸出防止回授嘯叫）。', false);
+        updatePlayButtonUI();
+      } catch (err) {
+        updateStatusBanner('無法取得麥克風權限，請檢查瀏覽器設定。', true);
+      }
+    });
+
+    // 音訊源 4：分享分頁音訊
+    document.getElementById('src-tab').addEventListener('click', async () => {
+      try {
+        await audioEngine.startTabAudioShare();
+        setActiveSourceButton('src-tab');
+        document.getElementById('track-title').textContent = 'TAB_AUDIO_CAPTURE';
+        document.getElementById('track-mode').textContent = 'MODE: TAB STREAM';
+        updateStatusBanner('已成功擷取分頁真實音軌！正在即時分析音訊頻譜。', false);
+        updatePlayButtonUI();
+      } catch (err) {
+        updateStatusBanner(err.message || '分頁音訊分享已取消或未勾選「分享分頁音訊」。', true);
+      }
+    });
+
+    // 音訊源 5：YouTube 嵌入（嚴格遵守未分享音軌前數值歸零）
+    function extractYouTubeId(input) {
+      const trimmed = input.trim();
+      if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+      const match = trimmed.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      return match ? match[1] : null;
+    }
+
+    document.getElementById('btn-load-yt').addEventListener('click', () => {
+      const raw = document.getElementById('yt-url-input').value;
+      const vid = extractYouTubeId(raw);
+      if (!vid) {
+        updateStatusBanner('請輸入有效的 YouTube 網址或 11 碼影片 ID。', true);
+        return;
+      }
+
+      // 若目前不是分頁擷取狀態，則停止其他音源並強制頻段歸零
+      if (!STATE.tabAudioActive) {
+        audioEngine.cleanupCurrentSource();
+        STATE.audioMode = 'youtube_idle';
+        STATE.isPlaying = false;
+        setActiveSourceButton('');
+        updatePlayButtonUI();
+      }
+
+      const wrap = document.getElementById('yt-player-wrap');
+      const iframe = document.getElementById('yt-iframe');
+      iframe.src = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&rel=0`;
+      wrap.classList.add('visible');
+
+      document.getElementById('track-title').textContent = `YT // ${vid}`;
+      document.getElementById('track-mode').textContent = STATE.tabAudioActive ? 'MODE: YT + TAB AUDIO' : 'MODE: YT (AWAITING TAB AUDIO)';
+
+      if (!STATE.tabAudioActive) {
+        updateStatusBanner('受瀏覽器安全限制，YouTube 聲音無法直接讀取；請點擊上方「分享分頁音訊」並選擇本分頁（勾選分享音訊）以啟動真實視覺化。', true);
+      }
+    });
+
+    // 色彩主題切換
+    function applyTheme(themeKey) {
+      const t = THEMES[themeKey];
+      if (!t) return;
+      STATE.theme = themeKey;
+      STATE.hue = t.hue;
+      document.documentElement.style.setProperty('--hud-primary', t.primary);
+      document.documentElement.style.setProperty('--hud-secondary', t.secondary);
+      scene.background.setHex(t.bg);
+      scene.fog.color.setHex(t.bg);
+
+      document.getElementById('ctrl-hue').value = t.hue;
+      document.getElementById('val-hue').textContent = `${t.hue}°`;
+      document.querySelectorAll('.theme-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.theme === themeKey);
+      });
+    }
+
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
+    });
+
+    // 滑桿控制綁定
+    document.getElementById('ctrl-hue').addEventListener('input', (e) => {
+      STATE.hue = Number(e.target.value);
+      document.getElementById('val-hue').textContent = `${STATE.hue}°`;
+      document.documentElement.style.setProperty('--hud-primary', `hsl(${STATE.hue}, 95%, 55%)`);
+    });
+
+    document.getElementById('ctrl-brightness').addEventListener('input', (e) => {
+      const pct = Number(e.target.value);
+      STATE.brightness = pct / 100;
+      document.getElementById('val-brightness').textContent = `${pct}%`;
+    });
+
+    // 初始化參數顯示
+    document.getElementById('ctrl-particles').value = STATE.particleCount;
+    document.getElementById('val-particles').textContent = STATE.particleCount;
+    document.getElementById('stat-tier').textContent = DEVICE_TIER.name;
+
+    document.getElementById('ctrl-particles').addEventListener('input', (e) => {
+      STATE.particleCount = Number(e.target.value);
+      document.getElementById('val-particles').textContent = STATE.particleCount;
+    });
+    document.getElementById('ctrl-particles').addEventListener('change', () => {
+      buildEffect(STATE.currentEffect);
+    });
+
+    document.getElementById('ctrl-reactivity').addEventListener('input', (e) => {
+      STATE.reactivity = Number(e.target.value);
+      document.getElementById('val-reactivity').textContent = `${STATE.reactivity.toFixed(2)}x`;
+    });
+
+    document.getElementById('ctrl-linelen').addEventListener('input', (e) => {
+      STATE.lineLength = Number(e.target.value);
+      document.getElementById('val-linelen').textContent = `${STATE.lineLength.toFixed(2)}x`;
+    });
+
+    document.getElementById('ctrl-volume').addEventListener('input', (e) => {
+      const pct = Number(e.target.value);
+      document.getElementById('val-volume').textContent = `${pct}%`;
+      audioEngine.setVolume(pct / 100);
+    });
+
+    // Bloom 開關
+    const bloomBtn = document.getElementById('btn-bloom-toggle');
+    function updateBloomBtn() {
+      bloomBtn.textContent = STATE.bloomEnabled ? '開啟中' : '已關閉';
+      bloomBtn.classList.toggle('active', STATE.bloomEnabled);
+      bloomPass.enabled = STATE.bloomEnabled;
+    }
+    updateBloomBtn();
+    bloomBtn.addEventListener('click', () => {
+      STATE.bloomEnabled = !STATE.bloomEnabled;
+      updateBloomBtn();
+    });
+
+    // 純視覺模式與 ESC 返回
+    const uiLayer = document.getElementById('ui-layer');
+    document.getElementById('btn-pure-visual').addEventListener('click', () => {
+      uiLayer.classList.add('pure-visual');
+    });
+    document.getElementById('btn-exit-pure').addEventListener('click', () => {
+      uiLayer.classList.remove('pure-visual');
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && uiLayer.classList.contains('pure-visual')) {
+        uiLayer.classList.remove('pure-visual');
+      }
+    });
+
+    // 全螢幕切換
+    document.getElementById('btn-fullscreen').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    // PNG 截圖下載（已開啟 preserveDrawingBuffer: true）
+    document.getElementById('btn-snapshot').addEventListener('click', () => {
+      composer.render();
+      const dataURL = renderer.domElement.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `WebAudioV4_${STATE.currentEffect}_${Date.now()}.png`;
+      link.href = dataURL;
+      link.click();
+    });
+
+    // 視窗大小調整
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DEVICE_TIER.maxDPR));
+      renderer.setSize(w, h);
+      composer.setSize(w, h);
+      bloomPass.setSize(w, h);
+    });
+
+    // 分頁隱藏時自動暫停渲染省電
+    document.addEventListener('visibilitychange', () => {
+      STATE.isPageHidden = document.hidden;
+    });
+
+    /* ============================================================================
+     * 8. 主渲染迴圈（支援三級裝置 FPS 節流）
+     * ========================================================================== */
+    buildEffect(STATE.currentEffect);
+
+    const clock = new THREE.Clock();
+    const frameInterval = 1 / DEVICE_TIER.targetFPS;
+    let accumulator = 0;
+    let fpsCounter = 0;
+    let fpsTimer = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (STATE.isPageHidden) return;
+
+      const delta = Math.min(clock.getDelta(), 0.1);
+      accumulator += delta;
+
+      if (accumulator < frameInterval) return;
+      const dt = accumulator;
+      accumulator = 0;
+
+      const elapsed = clock.elapsedTime;
+
+      // 更新音訊與特效
+      audioEngine.update();
+      if (activeEffectUpdater) {
+        activeEffectUpdater(dt, elapsed, audioEngine);
+      }
+
+      controls.update();
+      composer.render();
+      drawSpectrumBar();
+
+      // 更新 HUD 遙測數據
+      fpsCounter++;
+      fpsTimer += dt;
+      if (fpsTimer >= 0.5) {
+        document.getElementById('stat-fps').textContent = Math.round(fpsCounter / fpsTimer);
+        document.getElementById('stat-bass').textContent = `${Math.round(audioEngine.bass * 100)}%`;
+        fpsCounter = 0;
+        fpsTimer = 0;
+      }
+    }
+
+    animate();
+  </script>
+</body>
+</html>
